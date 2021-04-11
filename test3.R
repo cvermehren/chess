@@ -18,18 +18,24 @@ pgn[, uci := san2vec(moves_prun)]
 
 # Extract uci moves
 uci <- pgn[, list(uci)]
-line <- uci$uci[8]
+line <- uci$uci[10]
 
-# Cumulative paste
+# Yanish
+opening_line <- "1.e4 e5 2.Nf3 Nc6 3.Bb5 f5"
 
-
-chess_fun <- function(line) {
+chess_fun <- function(line, opening_line) {
+  
+  opening <- san2lan(opening_line)
+  opening <- strsplit(opening, " ")[[1]]
+  opening <- paste(opening, collapse = ",")
   
   line_frags <- strsplit(line, " ")[[1]]
   
   cumpaste = function(x, .sep = ",") Reduce(function(x1, x2) paste(x1, x2, sep = .sep), x, accumulate = TRUE)
   
   line_frags <- cumpaste(line_frags)
+  
+  line_frags <- line_frags[nchar(line_frags) >= nchar(opening)]
   
   endpoint <- "https://explorer.lichess.ovh/master?fen="
   startingpos <- "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
@@ -63,8 +69,23 @@ chess_fun <- function(line) {
   stats <- rbindlist(stats, idcol = T)
   
   setnames(stats, names(stats), c("line", "frequency"))
-  stats[, frequency := as.numeric(frequency)]
-  stats[, cum_stats := round(frequency/max(frequency), 2)]
   
-}
+  #stats <- stats[nchar(line) >= nchar(opening), ]
+  
+  stats[, frequency := as.numeric(frequency)]
+  stats[, rel_freq := frequency / shift(frequency, type = "lag")]
+  
+  stats[is.na(rel_freq), rel_freq := 1]
+  stats[, cumprod := round(cumprod(rel_freq)*100, 2)]
+  
+  stats[cumprod >= 1, keep := cumprod == min(cumprod)]
+  stats[is.na(keep), keep := FALSE]
 
+  stats[keep == TRUE, keep_pgn := lan2san(stats <- gsub(",", " ", line))]  
+  
+  return(stats)
+
+  }
+
+
+test <- lapply(uci$uci, chess_fun, opening_line = opening_line)
