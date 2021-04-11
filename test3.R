@@ -89,3 +89,10 @@ chess_fun <- function(line, opening_line) {
 
 
 test <- lapply(uci$uci, chess_fun, opening_line = opening_line)
+saveRDS(test, "chess_results.Rds")
+
+res <- rbindlist(test)
+res2 <- res[keep==TRUE]
+res3 <- res2[!duplicated(keep_pgn)]
+res4 <- res3[, list(keep_pgn, frequency, rel_freq, cumprod)]
+
