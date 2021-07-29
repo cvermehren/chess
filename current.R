@@ -137,7 +137,7 @@ res[is.na(rel_freq), rel_freq := frequency/max(frequency)]
 
 res[, cumprod := round(cumprod(rel_freq)*100, 2), by = line_no]
 
-keep <- res[cumprod > 1]
+keep <- res[cumprod >= 1]
 keep[ startsWith( shift(line, type = "lead"), line), keep := FALSE]
 keep[is.na(keep), keep := TRUE]
 keep <- keep[keep == "TRUE"]
