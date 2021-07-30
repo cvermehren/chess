@@ -14,23 +14,32 @@ library(stringr)
 
 # Settings ----------------------------------------------------------------
 
-opening_name <- "4Knights-White"
-defining_line <- "1.e4 e5 2.Nf3 Nc6 3.Nc3 Nf6"
-pgn_file <- "C:/Users/cve/Downloads/FourKnights.pgn"
-
+pgn_file <- "C:/Users/cve/Dropbox/Chess Repertoire/Black/queens_gambit_declined_lines.pgn"
 pgn <- data.table(read.pgn(pgn_file, stat.moves = FALSE, extract.moves = 0))
+
+opening_name <- pgn[1]$White
+
+defining_line <- pgn$Movetext
+defining_line <- substr(defining_line[1],1,which.max(apply(do.call(rbind,lapply(strsplit(defining_line,''),`length<-`,nchar(defining_line[1]))),2,function(i)!length(unique(i))==1))-1)
+defining_line <- gsub('\\.$', '', defining_line)
+defining_line <- gsub('\\d+$', '', defining_line)
+defining_line <- gsub('\\s+$', '', defining_line)
 
 
 # Cleansing ---------------------------------------------------------------
 
-# Remove characters not within the range of x20 (SPACE) and x7E (~): https://stackoverflow.com/questions/38828620/how-to-remove-strange-characters-using-gsub-in-r
-pgn[, moves_prun := gsub('[^\x20-\x7E]', '', Movetext)]
+# Remove characters not within the range of x20 (SPACE) and x7E (~): https://st3ackoverflow.com/questions/38828620/how-to-remove-strange-characters-using-gsub-in-r
+#pgn[, moves_prun := gsub('[^\x20-\x7E]', '', Movetext)]
 
-# Remove trailing dash
+
+pgn[, moves_prun := gsub('[^\x20|\x2B|\x2E|\x30-\x39|\x3D|N|B|K|R|Q|a-h|O-]', '', Movetext)]
+
+# Remove trailing signs
 pgn[, moves_prun := gsub('\\-$', '', moves_prun)]
-
-# Remove trailing equal sign
 pgn[, moves_prun := gsub('\\=$', '', moves_prun)]
+pgn[, moves_prun := gsub('\\=\\s+', ' ', moves_prun)]
+pgn[, moves_prun := gsub('\\-\\+$', '', moves_prun)]
+pgn[, moves_prun := gsub('\\+\\-$', '', moves_prun)]
 
 # Remove leading & trailing whitespace, then remove double space: https://stackoverflow.com/questions/25707647/merge-multiple-spaces-to-single-space-remove-trailing-leading-spaces
 pgn[, moves_prun := gsub("\\s+", " ", str_trim(moves_prun))]
@@ -38,6 +47,9 @@ pgn[, moves_prun := gsub("\\s+", " ", str_trim(moves_prun))]
 # Convert to UCI notation (engines)
 san2vec <- Vectorize(san2lan)
 pgn[, uci := san2vec(moves_prun)]
+
+# pgn[23]$Movetext
+# pgn[23]$moves_prun
 
 
 # Functions ---------------------------------------------------------------
@@ -57,8 +69,6 @@ get_variation_levels <- function(variation, defining_line) {
   return(variation_levels)
   
 }
-
-
 
 
 # Create variation levels -------------------------------------------------
@@ -113,19 +123,22 @@ for(i in seq_along(variation_levels)) {
     n_move <- httr::content(n_move)
     n_move <- n_move$white + n_move$draws + n_move$black
     
-    if(exists("n_move")){ if(n_move / total_games < 0.01) break } 
+    if(length(n_move) == 0) break
+    
+    #if(exists("n_move")){ if(n_move / total_games < 0.001) break } 
     
     stats_list[[j]] <- n_move
     
-    }
-
+  }
+  
   setTxtProgressBar(pb, i)
   
   Sys.sleep(2)
-    
-  }
- 
+  
+}
+
 res <- data.table( line = names(stats_list), frequency = unlist(stats_list))
+
 
 res[startsWith(line, shift(line, type = "lag")) , line_no := 0 ]
 res[is.na(line_no) , line_no := 1 ]
@@ -137,6 +150,9 @@ res[is.na(rel_freq), rel_freq := frequency/max(frequency)]
 
 res[, cumprod := round(cumprod(rel_freq)*100, 2), by = line_no]
 
+# saveRDS(res, "4Knights-White.Rds")
+# res <- readRDS("4Knights-White.Rds")
+
 keep <- res[cumprod >= 1]
 keep[ startsWith( shift(line, type = "lead"), line), keep := FALSE]
 keep[is.na(keep), keep := TRUE]
@@ -145,5 +161,39 @@ keep[, keep_pgn := gsub(",", " ", line)]
 
 lan2vec <- Vectorize(lan2san)
 keep[, keep_pgn := lan2vec(keep_pgn)]
+keep$keep_pgn
 
+keep$rank <- 1:nrow(keep)
+
+keep[, event := ""]
+keep[, site := ""]
+keep[, date := ""]
+keep[, round := ""]
+keep[, white := "QGD"]
+keep[, black := paste("Line", rank)]
+keep[, result := ""]
+
+df= data.table(keep)
+
+file = "test.pgn"
+add.tags = NULL
+append = FALSE
+
+i=1
+
+pgn_save <- function (df, file, add.tags = NULL, append = FALSE) 
+{
+  tags <- c("Event", "Site", "Date", "Round", "White", "Black", "Result")
+  
+  write("", file = file, append = append)
+  
+  for (i in 1:nrow(df)) {
+    
+    tmp <- df[i, ]
+    
+    for (t in tags) { write(paste0("[", t, " \"", as.character(tmp[[t]]), "\"]"), file = file, append = TRUE) }
+    
+    write(paste(as.character(tmp$keep_pgn), as.character(tmp$white), as.character(tmp$black), "\n"), file = file, append = TRUE)
+  }
+}
 
